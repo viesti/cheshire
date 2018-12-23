@@ -1,6 +1,8 @@
 (ns cheshire.parse
   (:import (com.fasterxml.jackson.core JsonParser JsonToken)))
 
+(def ^:dynamic *kv-fn* (fn kv-fn [k v] v))
+
 (declare parse*)
 
 (def ^{:doc "Flag to determine whether float values should be returned as
@@ -12,7 +14,7 @@
   ([obj]
      `(vary-meta ~obj assoc :tag `JsonParser)))
 
-(definline parse-object [^JsonParser jp key-fn bd? array-coerce-fn]
+(definline parse-object [^JsonParser jp key-fn bd? array-coerce-fn kv-fn]
   (let [jp (tag jp)]
     `(do
        (.nextToken ~jp)
@@ -22,8 +24,8 @@
            (let [key-str# (.getText ~jp)
                  _# (.nextToken ~jp)
                  key# (~key-fn key-str#)
-                 mmap# (assoc! mmap# key#
-                               (parse* ~jp ~key-fn ~bd? ~array-coerce-fn))]
+                 value# (parse* ~jp ~key-fn ~bd? ~array-coerce-fn ~kv-fn)
+                 mmap# (assoc! mmap# key# (~kv-fn key# value#))]
              (.nextToken ~jp)
              (recur mmap#))
            (persistent! mmap#))))))
@@ -58,9 +60,9 @@
               (chunk buf)
               (lazily-parse-array jp key-fn bd? array-coerce-fn)))))))))
 
-(defn parse* [^JsonParser jp key-fn bd? array-coerce-fn]
+(defn parse* [^JsonParser jp key-fn bd? array-coerce-fn kv-fn]
   (condp identical? (.getCurrentToken jp)
-    JsonToken/START_OBJECT (parse-object jp key-fn bd? array-coerce-fn)
+    JsonToken/START_OBJECT (parse-object jp key-fn bd? array-coerce-fn kv-fn)
     JsonToken/START_ARRAY (parse-array jp key-fn bd? array-coerce-fn)
     JsonToken/VALUE_STRING (.getText jp)
     JsonToken/VALUE_NUMBER_INT (.getNumberValue jp)
@@ -81,7 +83,7 @@
     (condp identical? (.getCurrentToken jp)
       nil
       eof
-      (parse* jp key-fn *use-bigdecimals?* array-coerce-fn))))
+      (parse* jp key-fn *use-bigdecimals?* array-coerce-fn *kv-fn*))))
 
 (defn parse [^JsonParser jp key-fn eof array-coerce-fn]
   (let [key-fn (or (if (and (instance? Boolean key-fn) key-fn) keyword key-fn) identity)]
@@ -95,4 +97,4 @@
         (.nextToken jp)
         (lazily-parse-array jp key-fn *use-bigdecimals?* array-coerce-fn))
 
-      (parse* jp key-fn *use-bigdecimals?* array-coerce-fn))))
+      (parse* jp key-fn *use-bigdecimals?* array-coerce-fn *kv-fn*))))

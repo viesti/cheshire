@@ -431,3 +431,12 @@
       invalid-json-message (json-exact/decode-strict "{\"foo\": 123}null")
       invalid-json-message (json-exact/decode-strict  "\"hello\" : 123}")
       {"foo" 1} (json/decode-strict "{\"foo\": 1}"))))
+
+(deftest kv-fn
+  (binding [parse/*kv-fn* (fn kv-fn [k v]
+                            (if (= k :timestamp)
+                              (clojure.instant/read-instant-date v)
+                              v))]
+    (is (= {:timestamp #inst "2018-12-27T08:00"
+            :a 1}
+           (json/parse-string "{\"timestamp\": \"2018-12-27T08:00\", \"a\": 1}" true)))))

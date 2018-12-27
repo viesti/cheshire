@@ -30,7 +30,7 @@
              (recur mmap#))
            (persistent! mmap#))))))
 
-(definline parse-array [^JsonParser jp key-fn bd? array-coerce-fn]
+(definline parse-array [^JsonParser jp key-fn bd? array-coerce-fn kv-fn]
   (let [jp (tag jp)]
     `(let [array-field-name# (.getCurrentName ~jp)]
        (.nextToken ~jp)
@@ -40,30 +40,30 @@
          (if-not (identical? (.getCurrentToken ~jp)
                              JsonToken/END_ARRAY)
            (let [coll# (conj! coll#
-                              (parse* ~jp ~key-fn ~bd? ~array-coerce-fn))]
+                              (parse* ~jp ~key-fn ~bd? ~array-coerce-fn ~kv-fn))]
              (.nextToken ~jp)
              (recur coll#))
            (persistent! coll#))))))
 
-(defn lazily-parse-array [^JsonParser jp key-fn bd? array-coerce-fn]
+(defn lazily-parse-array [^JsonParser jp key-fn bd? array-coerce-fn kv-fn]
   (lazy-seq
    (loop [chunk-idx 0, buf (chunk-buffer 32)]
      (if (identical? (.getCurrentToken jp) JsonToken/END_ARRAY)
        (chunk-cons (chunk buf) nil)
        (do
-         (chunk-append buf (parse* jp key-fn bd? array-coerce-fn))
+         (chunk-append buf (parse* jp key-fn bd? array-coerce-fn kv-fn))
          (.nextToken jp)
          (let [chunk-idx* (unchecked-inc chunk-idx)]
            (if (< chunk-idx* 32)
              (recur chunk-idx* buf)
              (chunk-cons
               (chunk buf)
-              (lazily-parse-array jp key-fn bd? array-coerce-fn)))))))))
+              (lazily-parse-array jp key-fn bd? array-coerce-fn kv-fn)))))))))
 
 (defn parse* [^JsonParser jp key-fn bd? array-coerce-fn kv-fn]
   (condp identical? (.getCurrentToken jp)
     JsonToken/START_OBJECT (parse-object jp key-fn bd? array-coerce-fn kv-fn)
-    JsonToken/START_ARRAY (parse-array jp key-fn bd? array-coerce-fn)
+    JsonToken/START_ARRAY (parse-array jp key-fn bd? array-coerce-fn kv-fn)
     JsonToken/VALUE_STRING (.getText jp)
     JsonToken/VALUE_NUMBER_INT (.getNumberValue jp)
     JsonToken/VALUE_NUMBER_FLOAT (if bd?
@@ -95,6 +95,6 @@
       JsonToken/START_ARRAY
       (do
         (.nextToken jp)
-        (lazily-parse-array jp key-fn *use-bigdecimals?* array-coerce-fn))
+        (lazily-parse-array jp key-fn *use-bigdecimals?* array-coerce-fn *kv-fn*))
 
       (parse* jp key-fn *use-bigdecimals?* array-coerce-fn *kv-fn*))))
